@@ -1,91 +1,53 @@
-# MIT License
-#
-# Copyright (c) 2023 AnonymousX1025
-#
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-
-from typing import Callable
+from typing import Callable, Union
 
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.types import CallbackQuery, Message
 
 from FallenMusic import SUDOERS, app
 
-from .active import is_active_chat
+
+async def is_admin(chat_id: int, user_id: int) -> bool:
+    """Checks if a user is an admin or owner in a chat, and has can_manage_video_chats privilege."""
+    try:
+        check = await app.get_chat_member(chat_id, user_id)
+    except Exception as e:
+        # Log the exception for debugging
+        print(f"Error in is_admin: {e}")  # Replace with proper logging
+        return False  # Assume not an admin if there's an error
+
+    if check.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR]:
+        admin = check.privileges
+        return admin.can_manage_video_chats
+    return False
 
 
 def admin_check(func: Callable) -> Callable:
-    async def non_admin(_, message: Message):
-        if not await is_active_chat(message.chat.id):
-            return await message.reply_text("ʙᴏᴛ ɪsɴ'ᴛ sᴛʀᴇᴀᴍɪɴɢ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ.")
+    async def wrapper(_, obj: Union[Message, CallbackQuery]):
+        chat_id = obj.chat.id if isinstance(obj, Message) else obj.message.chat.id
+        user_id = obj.from_user.id if isinstance(obj, Message) else obj.from_user.id
 
-        if message.from_user.id in SUDOERS:
-            return await func(_, message)
+        if not await is_active_chat(chat_id):
+            if isinstance(obj, Message):
+                return await obj.reply_text("ʙᴏᴛ ɪsɴ'ᴛ sᴛʀᴇᴀᴍɪɴɢ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ.")
+            else:
+                return await obj.answer(
+                    "ʙᴏᴛ ɪsɴ'ᴛ sᴛʀᴇᴀᴍɪɴɢ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ.", show_alert=True
+                )
 
-        check = await app.get_chat_member(message.chat.id, message.from_user.id)
-        if check.status not in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR]:
-            return await message.reply_text(
-                "» ʏᴏᴜ'ʀᴇ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ ʙᴀʙʏ, ᴘʟᴇᴀsᴇ sᴛᴀʏ ɪɴ ʏᴏᴜʀ ʟɪᴍɪᴛs."
-            )
+        if user_id in SUDOERS:
+            return await func(_, obj)
 
-        admin = (
-            await app.get_chat_member(message.chat.id, message.from_user.id)
-        ).privileges
-        if admin.can_manage_video_chats:
-            return await func(_, message)
+        if await is_admin(chat_id, user_id):
+            return await func(_, obj)
         else:
-            return await message.reply_text(
-                "» ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴘᴇʀᴍɪssɪᴏɴs ᴛᴏ ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏᴄʜᴀᴛs, ᴘʟᴇᴀsᴇ sᴛᴀʏ ɪɴ ʏᴏᴜʀ ʟɪᴍɪᴛs."
-            )
+            if isinstance(obj, Message):
+                return await obj.reply_text(
+                    "» ʏᴏᴜ'ʀᴇ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ ʙᴀʙʏ, ᴘʟᴇᴀsᴇ sᴛᴀʏ ɪɴ ʏᴏᴜʀ ʟɪᴍɪᴛs."
+                )
+            else:
+                return await obj.answer(
+                    "» ʏᴏᴜ'ʀᴇ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ ʙᴀʙʏ, ᴘʟᴇᴀsᴇ sᴛᴀʏ ɪɴ ʏᴏᴜʀ ʟɪᴍɪts.",
+                    show_alert=True,
+                )
 
-    return non_admin
-
-
-def admin_check_cb(func: Callable) -> Callable:
-    async def cb_non_admin(_, query: CallbackQuery):
-        if not await is_active_chat(query.message.chat.id):
-            return await query.answer(
-                "ʙᴏᴛ ɪsɴ'ᴛ sᴛʀᴇᴀᴍɪɴɢ ᴏɴ ᴠɪᴅᴇᴏᴄʜᴀᴛ.", show_alert=True
-            )
-
-        if query.from_user.id in SUDOERS:
-            return await func(_, query)
-
-        try:
-            check = await app.get_chat_member(query.message.chat.id, query.from_user.id)
-        except:
-            return
-        if check.status not in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR]:
-            return await query.answer(
-                "» ʏᴏᴜ'ʀᴇ ɴᴏᴛ ᴀɴ ᴀᴅᴍɪɴ ʙᴀʙʏ, ᴘʟᴇᴀsᴇ sᴛᴀʏ ɪɴ ʏᴏᴜʀ ʟɪᴍɪᴛs.",
-                show_alert=True,
-            )
-
-        admin = (
-            await app.get_chat_member(query.message.chat.id, query.from_user.id)
-        ).privileges
-        if admin.can_manage_video_chats:
-            return await func(_, query)
-        else:
-            return await query.answer(
-                "» ʏᴏᴜ ᴅᴏɴ'ᴛ ʜᴀᴠᴇ ᴘᴇʀᴍɪssɪᴏɴs ᴛᴏ ᴍᴀɴᴀɢᴇ ᴠɪᴅᴇᴏᴄʜᴀᴛs, ᴘʟᴇᴀsᴇ sᴛᴀʏ ɪɴ ʏᴏᴜʀ ʟɪᴍɪᴛs.",
-                show_alert=True,
-            )
-
-    return cb_non_admin
+    return wrapper
